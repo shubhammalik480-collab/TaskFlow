@@ -1,9 +1,9 @@
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
-
+const authRoutes = require("./routes/authRoutes");
 const app = express();
-
+const passport = require("./config/passport");
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -16,6 +16,9 @@ app.use(
 );
 
 app.use(cookieParser());
+app.use(passport.initialize());
+// Authentication Routes
+app.use("/api/auth", authRoutes);
 
 // Health Check Route
 app.get("/", (req, res) => {
@@ -24,6 +27,7 @@ app.get("/", (req, res) => {
         message: "TaskFlow API is running successfully!",
     });
 });
+
 
 // Test Route
 app.get("/api/health", (req, res) => {
