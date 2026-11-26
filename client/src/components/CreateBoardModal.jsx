@@ -1,43 +1,47 @@
 import { useState } from "react";
 import { X, FolderPlus } from "lucide-react";
+import API from "../api/axios";
 
 function CreateBoardModal({ isOpen, onClose, onCreate }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!title.trim()) {
-      return;
+    if (!title.trim()) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await API.post("/boards", {
+        title: title.trim(),
+        description: description.trim(),
+      });
+
+      onCreate(response.data.board);
+
+      setTitle("");
+      setDescription("");
+      onClose();
+    } catch (err) {
+      setError(
+        err.response?.data?.message || "Unable to create board. Try again."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    const newBoard = {
-      id: Date.now(),
-      name: title.trim(),
-      description: description.trim() || "No description provided.",
-      progress: 0,
-      members: ["SM"],
-      status: "In Progress",
-    };
-
-    onCreate(newBoard);
-
-    setTitle("");
-    setDescription("");
-    onClose();
   };
 
-  if (!isOpen) {
-    return null;
-  }
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4">
-
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
 
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-blue-100 p-3 text-blue-600">
@@ -48,7 +52,6 @@ function CreateBoardModal({ isOpen, onClose, onCreate }) {
               <h2 className="text-xl font-bold text-slate-800">
                 Create New Board
               </h2>
-
               <p className="text-sm text-slate-500">
                 Start organizing your project.
               </p>
@@ -64,9 +67,7 @@ function CreateBoardModal({ isOpen, onClose, onCreate }) {
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit}>
-
           <div className="mb-4">
             <label className="mb-2 block text-sm font-semibold text-slate-700">
               Board Name *
@@ -98,11 +99,15 @@ function CreateBoardModal({ isOpen, onClose, onCreate }) {
             />
           </div>
 
-          {/* Buttons */}
+          {error && (
+            <p className="mb-4 text-sm text-red-600">{error}</p>
+          )}
+
           <div className="flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
+              disabled={loading}
               className="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
               Cancel
@@ -110,13 +115,12 @@ function CreateBoardModal({ isOpen, onClose, onCreate }) {
 
             <button
               type="submit"
-              disabled={!title.trim()}
+              disabled={!title.trim() || loading}
               className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Create Board
+              {loading ? "Creating..." : "Create Board"}
             </button>
           </div>
-
         </form>
       </div>
     </div>

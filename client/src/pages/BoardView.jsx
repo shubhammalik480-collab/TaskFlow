@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   DndContext,
@@ -25,41 +26,46 @@ import {
   Plus,
   MoreHorizontal,
   CalendarDays,
-  Flag,
   Pencil,
   Trash2,
   GripVertical,
 } from "lucide-react";
 
+import API from "../api/axios";
 import AddTaskModal from "../components/AddTaskModal";
 import EditTaskModal from "../components/EditTaskModal";
 
-// Kanban Columns
-const columns = [
-  {
-    title: "To Do",
-    color: "bg-slate-400",
-    badge: "bg-slate-100 text-slate-600",
-  },
-  {
-    title: "In Progress",
-    color: "bg-blue-500",
-    badge: "bg-blue-100 text-blue-600",
-  },
-  {
-    title: "Done",
-    color: "bg-green-500",
-    badge: "bg-green-100 text-green-600",
-  },
-];
+// Column colors
+const getColumnStyle = (title) => {
+  switch (title.toLowerCase()) {
+    case "to do":
+      return {
+        color: "bg-slate-400",
+        badge: "bg-slate-100 text-slate-600",
+      };
+
+    case "in progress":
+      return {
+        color: "bg-blue-500",
+        badge: "bg-blue-100 text-blue-600",
+      };
+
+    case "done":
+      return {
+        color: "bg-green-500",
+        badge: "bg-green-100 text-green-600",
+      };
+
+    default:
+      return {
+        color: "bg-purple-500",
+        badge: "bg-purple-100 text-purple-600",
+      };
+  }
+};
 
 // Individual Task Card
-function TaskCard({
-  task,
-  onEdit,
-  onDelete,
-  getPriorityColor,
-}) {
+function TaskCard({ task, onEdit, onDelete, getPriorityColor }) {
   const {
     attributes,
     listeners,
@@ -68,7 +74,7 @@ function TaskCard({
     transition,
     isDragging,
   } = useSortable({
-    id: task.id,
+    id: task._id,
   });
 
   const style = {
@@ -83,14 +89,11 @@ function TaskCard({
       style={style}
       className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
     >
-      {/* Task Title */}
       <div className="mb-3 flex items-start justify-between gap-2">
-
-        <h3 className="font-semibold text-slate-800 break-words">
+        <h3 className="break-words font-semibold text-slate-800">
           {task.title}
         </h3>
 
-        {/* Drag Handle */}
         <button
           {...attributes}
           {...listeners}
@@ -100,15 +103,12 @@ function TaskCard({
         >
           <GripVertical size={19} />
         </button>
-
       </div>
 
-      {/* Description */}
       <p className="mb-4 break-words text-sm leading-5 text-slate-500">
         {task.description || "No description provided."}
       </p>
 
-      {/* Priority */}
       <div className="mb-4">
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold capitalize ${getPriorityColor(
@@ -119,16 +119,13 @@ function TaskCard({
         </span>
       </div>
 
-      {/* Task Footer */}
       <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-
         <div className="flex items-center gap-1 text-xs text-slate-400">
           <CalendarDays size={14} />
           Task
         </div>
 
         <div className="flex items-center gap-2">
-
           <button
             type="button"
             onClick={() => onEdit(task)}
@@ -140,15 +137,13 @@ function TaskCard({
 
           <button
             type="button"
-            onClick={() => onDelete(task.id)}
+            onClick={() => onDelete(task._id)}
             aria-label="Delete task"
             className="rounded-lg p-2 text-red-500 hover:bg-red-50"
           >
             <Trash2 size={16} />
           </button>
-
         </div>
-
       </div>
     </div>
   );
@@ -160,11 +155,17 @@ function KanbanColumn({
   columnTasks,
   onEdit,
   onDelete,
+  onEditColumn,
+  onDeleteColumn,
+  isMenuOpen,
+  onToggleMenu,
   getPriorityColor,
 }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: column.title,
+    id: column._id,
   });
+
+  const styles = getColumnStyle(column.title);
 
   return (
     <div
@@ -173,45 +174,59 @@ function KanbanColumn({
         isOver ? "bg-blue-100 ring-2 ring-blue-300" : "bg-slate-100"
       }`}
     >
-      {/* Column Header */}
       <div className="mb-5 flex items-center justify-between">
-
         <div className="flex items-center gap-2">
-
+          <span className={`h-3 w-3 rounded-full ${styles.color}`} />
+          <h2 className="font-bold text-slate-700">{column.title}</h2>
           <span
-            className={`h-3 w-3 rounded-full ${column.color}`}
-          />
-
-          <h2 className="font-bold text-slate-700">
-            {column.title}
-          </h2>
-
-          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${column.badge}`}>
+            className={`rounded-full px-2 py-1 text-xs font-semibold ${styles.badge}`}
+          >
             {columnTasks.length}
           </span>
-
         </div>
 
-        <button
-          type="button"
-          aria-label={`More options for ${column.title}`}
-          className="text-slate-400 hover:text-slate-700"
-        >
-          <MoreHorizontal size={20} />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            aria-label={`More options for ${column.title}`}
+            aria-expanded={isMenuOpen}
+            onClick={() => onToggleMenu(column._id)}
+            className="rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+          >
+            <MoreHorizontal size={20} />
+          </button>
 
+          {isMenuOpen && (
+            <div className="absolute right-0 top-9 z-20 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => onEditColumn(column)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <Pencil size={15} />
+                Rename column
+              </button>
+              <button
+                type="button"
+                onClick={() => onDeleteColumn(column)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              >
+                <Trash2 size={15} />
+                Delete column
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Sortable Tasks */}
       <SortableContext
-        items={columnTasks.map((task) => task.id)}
+        items={columnTasks.map((task) => task._id)}
         strategy={verticalListSortingStrategy}
       >
         <div className="min-h-64 space-y-3">
-
           {columnTasks.map((task) => (
             <TaskCard
-              key={task.id}
+              key={task._id}
               task={task}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -224,7 +239,6 @@ function KanbanColumn({
               Drop tasks here
             </div>
           )}
-
         </div>
       </SortableContext>
     </div>
@@ -232,12 +246,21 @@ function KanbanColumn({
 }
 
 // Main Board Component
-function BoardView({ board, onBack }) {
+function BoardView() {
+  const { boardId } = useParams();
+  const navigate = useNavigate();
+
+  const [board, setBoard] = useState(null);
+  const [columns, setColumns] = useState([]);
+  const [tasks, setTasks] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-
   const [selectedTask, setSelectedTask] = useState(null);
-  const [tasks, setTasks] = useState([]);
+  const [activeColumnMenu, setActiveColumnMenu] = useState(null);
 
   // Drag Sensors
   const sensors = useSensors(
@@ -246,117 +269,325 @@ function BoardView({ board, onBack }) {
         distance: 5,
       },
     }),
-
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
-  // Create Task
-  const handleCreateTask = (newTask) => {
-    setTasks((previousTasks) => [
-      ...previousTasks,
-      newTask,
-    ]);
+  // Fetch Board, Columns and Tasks
+  useEffect(() => {
+    const fetchBoardData = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [boardResponse, columnResponse, taskResponse] =
+          await Promise.all([
+            API.get(`/boards/${boardId}`),
+            API.get(`/columns/${boardId}`),
+            API.get(`/tasks/${boardId}`),
+          ]);
+
+        setBoard(boardResponse.data.board);
+        setColumns(columnResponse.data.columns || []);
+        setTasks(taskResponse.data.tasks || []);
+      } catch (err) {
+        console.error("Board Fetch Error:", err);
+
+        setError(
+          err.response?.data?.message ||
+            "Unable to load board. Please try again."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (boardId) {
+      fetchBoardData();
+    } else {
+      setError("Invalid Board ID.");
+      setLoading(false);
+    }
+  }, [boardId]);
+
+  // Create Column
+  const handleCreateColumn = async () => {
+    const title = window.prompt("Enter new column name:");
+    if (!title || !title.trim()) return;
+
+    try {
+      const response = await API.post(`/columns/${boardId}`, {
+        title: title.trim(),
+      });
+
+      setColumns((previousColumns) => [
+        ...previousColumns,
+        response.data.column,
+      ]);
+      setActiveColumnMenu(null);
+    } catch (err) {
+      console.error("Create Column Error:", err);
+      alert(err.response?.data?.message || "Unable to create column.");
+    }
   };
 
-  // Edit Task Modal
+  // Rename Column
+  const handleEditColumn = async (column) => {
+    setActiveColumnMenu(null);
+    const title = window.prompt("Enter new column name:", column.title);
+    if (!title || !title.trim() || title.trim() === column.title) return;
+
+    try {
+      const response = await API.put(`/columns/${boardId}/${column._id}`, {
+        title: title.trim(),
+      });
+
+      setColumns((previousColumns) =>
+        previousColumns.map((item) =>
+          item._id === column._id
+            ? { ...item, ...(response.data.column || {}), title: title.trim() }
+            : item
+        )
+      );
+    } catch (err) {
+      console.error("Update Column Error:", err);
+      alert(err.response?.data?.message || "Unable to update column.");
+    }
+  };
+
+  // Delete Column (backend prevents deletion when tasks still exist)
+  const handleDeleteColumn = async (column) => {
+    setActiveColumnMenu(null);
+
+    if (tasks.some((task) => (task.column?._id || task.column) === column._id)) {
+      alert("This column is not empty. Move or delete its tasks before deleting it.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Are you sure you want to delete "${column.title}"?`);
+    if (!confirmed) return;
+
+    try {
+      await API.delete(`/columns/${boardId}/${column._id}`);
+      setColumns((previousColumns) =>
+        previousColumns.filter((item) => item._id !== column._id)
+      );
+    } catch (err) {
+      console.error("Delete Column Error:", err);
+      alert(err.response?.data?.message || "Unable to delete column.");
+    }
+  };
+
+  // Create Task
+  const handleCreateTask = async (taskData) => {
+    try {
+      if (columns.length === 0) {
+        throw new Error("No column available in this board.");
+      }
+
+      const defaultColumn = columns[0];
+
+      const response = await API.post(`/tasks/${boardId}`, {
+        ...taskData,
+        column: defaultColumn._id,
+      });
+
+      setTasks((previousTasks) => [
+        ...previousTasks,
+        response.data.task,
+      ]);
+    } catch (err) {
+      console.error("Create Task Error:", err);
+
+      throw new Error(
+        err.response?.data?.message || "Unable to create task."
+      );
+    }
+  };
+
+  // Edit Task Click
   const handleEditClick = (task) => {
     setSelectedTask(task);
     setIsEditModalOpen(true);
   };
 
   // Update Task
-  const handleUpdateTask = (updatedTask) => {
-    setTasks((previousTasks) =>
-      previousTasks.map((task) =>
-        task.id === updatedTask.id ? updatedTask : task
-      )
-    );
+  const handleUpdateTask = async (updatedTask) => {
+    try {
+      const response = await API.put(
+        `/tasks/${boardId}/${updatedTask._id}`,
+        {
+          title: updatedTask.title,
+          description: updatedTask.description,
+          priority: updatedTask.priority,
+        }
+      );
+
+      setTasks((previousTasks) =>
+        previousTasks.map((task) =>
+          task._id === updatedTask._id
+            ? { ...task, ...response.data.task }
+            : task
+        )
+      );
+    } catch (err) {
+      console.error("Update Task Error:", err);
+
+      throw new Error(
+        err.response?.data?.message || "Unable to update task."
+      );
+    }
   };
 
   // Delete Task
-  const handleDeleteTask = (taskId) => {
+  const handleDeleteTask = async (taskId) => {
     const confirmed = window.confirm(
       "Are you sure you want to delete this task?"
     );
 
     if (!confirmed) return;
 
-    setTasks((previousTasks) =>
-      previousTasks.filter((task) => task.id !== taskId)
-    );
+    try {
+      await API.delete(`/tasks/${boardId}/${taskId}`);
+
+      setTasks((previousTasks) =>
+        previousTasks.filter((task) => task._id !== taskId)
+      );
+    } catch (err) {
+      console.error("Delete Task Error:", err);
+
+      alert(
+        err.response?.data?.message || "Unable to delete task."
+      );
+    }
   };
 
   // Drag and Drop
-  const handleDragEnd = ({ active, over }) => {
+  const handleDragEnd = async ({ active, over }) => {
     if (!over) return;
 
-    setTasks((previousTasks) => {
-      const activeTask = previousTasks.find(
-        (task) => task.id === active.id
+    const activeTask = tasks.find(
+      (task) => task._id === active.id
+    );
+
+    if (!activeTask) return;
+
+    const overTask = tasks.find(
+      (task) => task._id === over.id
+    );
+
+    const targetColumn =
+      columns.find((column) => column._id === over.id) ||
+      columns.find(
+        (column) =>
+          column._id === (overTask?.column?._id || overTask?.column)
       );
 
-      if (!activeTask) return previousTasks;
+    if (!targetColumn) return;
 
-      const overTask = previousTasks.find(
-        (task) => task.id === over.id
+    const sourceColumnId =
+      activeTask.column?._id || activeTask.column;
+
+    // Same column: reorder tasks
+    if (sourceColumnId === targetColumn._id) {
+      if (!overTask || active.id === over.id) return;
+
+      const columnTasks = tasks
+        .filter(
+          (task) =>
+            (task.column?._id || task.column) === sourceColumnId
+        )
+        .sort((a, b) => a.order - b.order);
+
+      const oldIndex = columnTasks.findIndex(
+        (task) => task._id === active.id
       );
 
-      // Find destination column
-      const targetColumn = columns.find(
-        (column) => column.title === over.id
-      ) || columns.find(
-        (column) => column.title === overTask?.status
+      const newIndex = columnTasks.findIndex(
+        (task) => task._id === over.id
       );
 
-      if (!targetColumn) return previousTasks;
+      if (oldIndex === -1 || newIndex === -1) return;
 
-      // Same column: reorder tasks
-      if (activeTask.status === targetColumn.title) {
-        if (!overTask || active.id === over.id) {
-          return previousTasks;
-        }
+      const reorderedTasks = arrayMove(
+        columnTasks,
+        oldIndex,
+        newIndex
+      );
 
-        const columnTasks = previousTasks.filter(
-          (task) => task.status === activeTask.status
+      const otherTasks = tasks.filter(
+        (task) =>
+          (task.column?._id || task.column) !== sourceColumnId
+      );
+
+      const newTasks = [
+        ...otherTasks,
+        ...reorderedTasks.map((task, index) => ({
+          ...task,
+          order: index,
+        })),
+      ];
+
+      setTasks(newTasks);
+
+      try {
+        await Promise.all(
+          reorderedTasks.map((task, index) =>
+            API.put(`/tasks/${boardId}/${task._id}`, {
+              order: index,
+            })
+          )
         );
+      } catch (err) {
+        console.error("Task Reorder Error:", err);
+        alert("Unable to save task order. Reloading board.");
 
-        const oldIndex = columnTasks.findIndex(
-          (task) => task.id === active.id
-        );
-
-        const newIndex = columnTasks.findIndex(
-          (task) => task.id === over.id
-        );
-
-        if (oldIndex === -1 || newIndex === -1) {
-          return previousTasks;
-        }
-
-        const reorderedTasks = arrayMove(
-          columnTasks,
-          oldIndex,
-          newIndex
-        );
-
-        const otherTasks = previousTasks.filter(
-          (task) => task.status !== activeTask.status
-        );
-
-        return [...otherTasks, ...reorderedTasks];
+        const response = await API.get(`/tasks/${boardId}`);
+        setTasks(response.data.tasks || []);
       }
 
-      // Different column: change status
-      return previousTasks.map((task) =>
-        task.id === active.id
-          ? {
-              ...task,
-              status: targetColumn.title,
-            }
-          : task
-      );
-    });
+      return;
+    }
+
+    // Different column: move task
+    const destinationTasks = tasks.filter(
+      (task) =>
+        (task.column?._id || task.column) === targetColumn._id
+    );
+
+    const newOrder = destinationTasks.length;
+
+    const previousTasks = [...tasks];
+
+    const newTasks = tasks.map((task) =>
+      task._id === active.id
+        ? {
+            ...task,
+            column: targetColumn._id,
+            order: newOrder,
+          }
+        : task
+    );
+
+    setTasks(newTasks);
+
+    try {
+      await API.put(`/tasks/${boardId}/${activeTask._id}`, {
+        column: targetColumn._id,
+        order: newOrder,
+      });
+    } catch (err) {
+      console.error("Task Move Error:", err);
+      alert("Unable to move task. Reloading board.");
+
+      try {
+        const response = await API.get(`/tasks/${boardId}`);
+        setTasks(response.data.tasks || previousTasks);
+      } catch {
+        setTasks(previousTasks);
+      }
+    }
   };
 
   // Priority Colors
@@ -376,15 +607,41 @@ function BoardView({ board, onBack }) {
     }
   };
 
+  // Loading
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-lg font-semibold text-slate-600">
+          Loading board...
+        </p>
+      </div>
+    );
+  }
+
+  // Error
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 p-5">
+        <p className="text-center text-red-600">{error}</p>
+
+        <button
+          onClick={() => navigate("/")}
+          className="rounded-lg bg-blue-600 px-5 py-2 text-white"
+        >
+          Back to Dashboard
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-5 sm:p-8">
 
       {/* Header */}
       <div className="mb-8">
-
         <button
           type="button"
-          onClick={onBack}
+          onClick={() => navigate("/")}
           className="mb-5 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600"
         >
           <ArrowLeft size={18} />
@@ -392,56 +649,79 @@ function BoardView({ board, onBack }) {
         </button>
 
         <div className="flex flex-wrap items-center justify-between gap-4">
-
           <div>
             <h1 className="text-3xl font-bold text-slate-800">
-              {board.name}
+              {board?.title || board?.name || "Untitled Board"}
             </h1>
 
             <p className="mt-2 text-slate-500">
-              {board.description}
+              {board?.description || "No description provided."}
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700"
-          >
-            <Plus size={19} />
-            Add Task
-          </button>
-
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleCreateColumn}
+              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 font-medium text-slate-700 hover:bg-slate-100"
+            >
+              <Plus size={19} />
+              Add Column
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700"
+            >
+              <Plus size={19} />
+              Add Task
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Kanban Board */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-
-          {columns.map((column) => {
-            const columnTasks = tasks.filter(
-              (task) => task.status === column.title
-            );
-
-            return (
-              <KanbanColumn
-                key={column.title}
-                column={column}
-                columnTasks={columnTasks}
-                onEdit={handleEditClick}
-                onDelete={handleDeleteTask}
-                getPriorityColor={getPriorityColor}
-              />
-            );
-          })}
-
+      {columns.length === 0 ? (
+        <div className="rounded-xl bg-white p-8 text-center text-slate-500">
+          No columns found in this board.
         </div>
-      </DndContext>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {columns.map((column) => {
+              const columnTasks = tasks
+                .filter(
+                  (task) =>
+                    (task.column?._id || task.column) === column._id
+                )
+                .sort((a, b) => a.order - b.order);
+
+              return (
+                <KanbanColumn
+                  key={column._id}
+                  column={column}
+                  columnTasks={columnTasks}
+                  onEdit={handleEditClick}
+                  onDelete={handleDeleteTask}
+                  onEditColumn={handleEditColumn}
+                  onDeleteColumn={handleDeleteColumn}
+                  isMenuOpen={activeColumnMenu === column._id}
+                  onToggleMenu={(columnId) =>
+                    setActiveColumnMenu((current) =>
+                      current === columnId ? null : columnId
+                    )
+                  }
+                  getPriorityColor={getPriorityColor}
+                />
+              );
+            })}
+          </div>
+        </DndContext>
+      )}
 
       {/* Add Task Modal */}
       <AddTaskModal
@@ -466,3 +746,5 @@ function BoardView({ board, onBack }) {
 }
 
 export default BoardView;
+
+

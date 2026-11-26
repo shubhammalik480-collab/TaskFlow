@@ -5,42 +5,49 @@ function EditTaskModal({ isOpen, onClose, task, onUpdate }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  // Load existing task details
   useEffect(() => {
     if (task) {
       setTitle(task.title || "");
       setDescription(task.description || "");
       setPriority(task.priority || "medium");
+      setError("");
     }
   }, [task]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!title.trim() || !task) return;
 
-    const updatedTask = {
-      ...task,
-      title: title.trim(),
-      description: description.trim(),
-      priority,
-    };
+    setLoading(true);
+    setError("");
 
-    onUpdate(updatedTask);
-    onClose();
+    try {
+      await onUpdate({
+        ...task,
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+      });
+
+      onClose();
+    } catch (err) {
+      setError(err.message || "Unable to update task. Try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen || !task) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4">
-
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
 
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
-
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-blue-100 p-3 text-blue-600">
               <Pencil size={22} />
@@ -50,7 +57,6 @@ function EditTaskModal({ isOpen, onClose, task, onUpdate }) {
               <h2 className="text-xl font-bold text-slate-800">
                 Edit Task
               </h2>
-
               <p className="text-sm text-slate-500">
                 Update your task details.
               </p>
@@ -58,18 +64,16 @@ function EditTaskModal({ isOpen, onClose, task, onUpdate }) {
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close modal"
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
           >
             <X size={20} />
           </button>
-
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit}>
-
           <label className="mb-2 block text-sm font-semibold text-slate-700">
             Task Title *
           </label>
@@ -111,12 +115,15 @@ function EditTaskModal({ isOpen, onClose, task, onUpdate }) {
             <option value="high">High</option>
           </select>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3">
+          {error && (
+            <p className="mb-4 text-sm text-red-600">{error}</p>
+          )}
 
+          <div className="flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
+              disabled={loading}
               className="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
             >
               Cancel
@@ -124,14 +131,12 @@ function EditTaskModal({ isOpen, onClose, task, onUpdate }) {
 
             <button
               type="submit"
-              disabled={!title.trim()}
+              disabled={!title.trim() || loading}
               className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Save Changes
+              {loading ? "Saving..." : "Save Changes"}
             </button>
-
           </div>
-
         </form>
 
       </div>

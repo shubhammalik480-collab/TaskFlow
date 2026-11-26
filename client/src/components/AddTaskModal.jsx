@@ -5,27 +5,33 @@ function AddTaskModal({ isOpen, onClose, onCreate }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!title.trim()) return;
 
-    const newTask = {
-      id: Date.now(),
-      title: title.trim(),
-      description: description.trim(),
-      priority,
-      status: "To Do",
-    };
+    setLoading(true);
+    setError("");
 
-    onCreate(newTask);
+    try {
+      await onCreate({
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+      });
 
-    setTitle("");
-    setDescription("");
-    setPriority("medium");
-
-    onClose();
+      setTitle("");
+      setDescription("");
+      setPriority("medium");
+      onClose();
+    } catch (err) {
+      setError(err.message || "Unable to create task. Try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -34,7 +40,6 @@ function AddTaskModal({ isOpen, onClose, onCreate }) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
 
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-blue-100 p-3 text-blue-600">
@@ -51,12 +56,11 @@ function AddTaskModal({ isOpen, onClose, onCreate }) {
             </div>
           </div>
 
-          <button onClick={onClose} aria-label="Close modal">
+          <button type="button" onClick={onClose} aria-label="Close modal">
             <X size={21} />
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit}>
           <label className="mb-2 block text-sm font-semibold text-slate-700">
             Task Title *
@@ -99,10 +103,15 @@ function AddTaskModal({ isOpen, onClose, onCreate }) {
             <option value="high">High</option>
           </select>
 
+          {error && (
+            <p className="mb-4 text-sm text-red-600">{error}</p>
+          )}
+
           <div className="flex justify-end gap-3">
             <button
               type="button"
               onClick={onClose}
+              disabled={loading}
               className="rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600"
             >
               Cancel
@@ -110,10 +119,10 @@ function AddTaskModal({ isOpen, onClose, onCreate }) {
 
             <button
               type="submit"
-              disabled={!title.trim()}
+              disabled={!title.trim() || loading}
               className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              Add Task
+              {loading ? "Creating..." : "Add Task"}
             </button>
           </div>
         </form>
