@@ -2,6 +2,28 @@ const mongoose = require("mongoose");
 
 const Task = require("../models/Task");
 const Column = require("../models/Column");
+const { getIO } = require("../sockets/socket");
+
+// Helper: Emit event only to the specific board room
+const emitBoardEvent = (boardId, eventName, data) => {
+  try {
+    const io = getIO();
+
+    io.to(`board-${boardId}`).emit(eventName, data);
+
+    console.log(`Socket Event Emitted: ${eventName} | Board: ${boardId}`);
+  } catch (error) {
+    console.error("Socket Emit Error:", error.message);
+  }
+};
+
+// Helper: Populate task details
+const populateTask = async (taskId) => {
+  return await Task.findById(taskId)
+    .populate("assignedTo", "name email")
+    .populate("createdBy", "name email")
+    .populate("column", "title order");
+};
 
 // 1. CREATE TASK
 const createTask = async (req, res) => {
@@ -62,10 +84,15 @@ const createTask = async (req, res) => {
       order: lastTask ? lastTask.order + 1 : 0,
     });
 
+    const populatedTask = await populateTask(task._id);
+
+    // Real-time event
+    emitBoardEvent(boardId, "task:created", populatedTask);
+
     res.status(201).json({
       success: true,
       message: "Task created successfully",
-      task,
+      task: populatedTask,
     });
   } catch (error) {
     console.error("Create Task Error:", error);
@@ -129,6 +156,10 @@ const updateTask = async (req, res) => {
       });
     }
 
+    // Store previous values to detect movement
+    const previousColumn = task.column.toString();
+    const previousOrder = task.order;
+
     const allowedFields = [
       "title",
       "description",
@@ -171,10 +202,34 @@ const updateTask = async (req, res) => {
 
     await task.save();
 
+    const populatedTask = await populateTask(task._id);
+
+    const newColumn = task.column.toString();
+    const newOrder = task.order;
+
+    // Detect task movement or reordering
+    const hasMoved =
+      previousColumn !== newColumn ||
+      previousOrder !== newOrder;
+
+    if (hasMoved) {
+      emitBoardEvent(
+        req.board._id,
+        "task:moved",
+        populatedTask
+      );
+    } else {
+      emitBoardEvent(
+        req.board._id,
+        "task:updated",
+        populatedTask
+      );
+    }
+
     res.status(200).json({
       success: true,
       message: "Task updated successfully",
-      task,
+      task: populatedTask,
     });
   } catch (error) {
     console.error("Update Task Error:", error);
@@ -209,6 +264,15 @@ const deleteTask = async (req, res) => {
         message: "Task not found",
       });
     }
+
+    // Real-time event
+    emitBoardEvent(
+      req.board._id,
+      "task:deleted",
+      {
+        taskId: task._id,
+      }
+    );
 
     res.status(200).json({
       success: true,

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 
 import API from "../api/axios";
+import socket from "../socket";
 import AddTaskModal from "../components/AddTaskModal";
 import EditTaskModal from "../components/EditTaskModal";
 
@@ -177,7 +178,11 @@ function KanbanColumn({
       <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className={`h-3 w-3 rounded-full ${styles.color}`} />
-          <h2 className="font-bold text-slate-700">{column.title}</h2>
+
+          <h2 className="font-bold text-slate-700">
+            {column.title}
+          </h2>
+
           <span
             className={`rounded-full px-2 py-1 text-xs font-semibold ${styles.badge}`}
           >
@@ -206,6 +211,7 @@ function KanbanColumn({
                 <Pencil size={15} />
                 Rename column
               </button>
+
               <button
                 type="button"
                 onClick={() => onDeleteColumn(column)}
@@ -311,9 +317,91 @@ function BoardView() {
     }
   }, [boardId]);
 
+  // Socket.io Connection, Board Room and Real-Time Task Events
+  useEffect(() => {
+    if (!boardId) return;
+
+    const handleConnect = () => {
+      console.log("Socket connected:", socket.id);
+      socket.emit("join-board", boardId);
+    };
+
+    const handleTaskCreated = (newTask) => {
+      console.log("Real-time Task Created:", newTask);
+      setTasks((previousTasks) => {
+        const alreadyExists = previousTasks.some(
+          (task) => task._id === newTask._id
+        );
+        return alreadyExists ? previousTasks : [...previousTasks, newTask];
+      });
+    };
+
+    const handleTaskMoved = (updatedTask) => {
+      console.log("Real-time Task Moved:", updatedTask);
+      setTasks((previousTasks) =>
+        previousTasks.map((task) =>
+          task._id === updatedTask._id ? updatedTask : task
+        )
+      );
+    };
+
+    const handleTaskUpdated = (updatedTask) => {
+      console.log("Real-time Task Updated:", updatedTask);
+      setTasks((previousTasks) =>
+        previousTasks.map((task) =>
+          task._id === updatedTask._id ? updatedTask : task
+        )
+      );
+    };
+
+    const handleTaskDeleted = (data) => {
+      console.log("Real-time Task Deleted:", data.taskId);
+      setTasks((previousTasks) =>
+        previousTasks.filter((task) => task._id !== data.taskId)
+      );
+    };
+
+    const handleUserJoined = (data) => {
+      console.log("A user joined this board:", data.userId);
+    };
+
+    const handleSocketError = (data) => {
+      console.error("Socket error:", data.message);
+    };
+
+    const handleConnectError = (err) => {
+      console.error("Socket connection failed:", err.message);
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("task:created", handleTaskCreated);
+    socket.on("task:moved", handleTaskMoved);
+    socket.on("task:updated", handleTaskUpdated);
+    socket.on("task:deleted", handleTaskDeleted);
+    socket.on("user:joined", handleUserJoined);
+    socket.on("socket:error", handleSocketError);
+    socket.on("connect_error", handleConnectError);
+
+    socket.connect();
+
+    return () => {
+      socket.emit("leave-board", boardId);
+      socket.off("connect", handleConnect);
+      socket.off("task:created", handleTaskCreated);
+      socket.off("task:moved", handleTaskMoved);
+      socket.off("task:updated", handleTaskUpdated);
+      socket.off("task:deleted", handleTaskDeleted);
+      socket.off("user:joined", handleUserJoined);
+      socket.off("socket:error", handleSocketError);
+      socket.off("connect_error", handleConnectError);
+      socket.disconnect();
+    };
+  }, [boardId]);
+
   // Create Column
   const handleCreateColumn = async () => {
     const title = window.prompt("Enter new column name:");
+
     if (!title || !title.trim()) return;
 
     try {
@@ -325,6 +413,7 @@ function BoardView() {
         ...previousColumns,
         response.data.column,
       ]);
+
       setActiveColumnMenu(null);
     } catch (err) {
       console.error("Create Column Error:", err);
@@ -335,7 +424,9 @@ function BoardView() {
   // Rename Column
   const handleEditColumn = async (column) => {
     setActiveColumnMenu(null);
+
     const title = window.prompt("Enter new column name:", column.title);
+
     if (!title || !title.trim() || title.trim() === column.title) return;
 
     try {
@@ -346,7 +437,11 @@ function BoardView() {
       setColumns((previousColumns) =>
         previousColumns.map((item) =>
           item._id === column._id
-            ? { ...item, ...(response.data.column || {}), title: title.trim() }
+            ? {
+                ...item,
+                ...(response.data.column || {}),
+                title: title.trim(),
+              }
             : item
         )
       );
@@ -356,20 +451,31 @@ function BoardView() {
     }
   };
 
-  // Delete Column (backend prevents deletion when tasks still exist)
+  // Delete Column
   const handleDeleteColumn = async (column) => {
     setActiveColumnMenu(null);
 
-    if (tasks.some((task) => (task.column?._id || task.column) === column._id)) {
-      alert("This column is not empty. Move or delete its tasks before deleting it.");
+    if (
+      tasks.some(
+        (task) =>
+          (task.column?._id || task.column) === column._id
+      )
+    ) {
+      alert(
+        "This column is not empty. Move or delete its tasks before deleting it."
+      );
       return;
     }
 
-    const confirmed = window.confirm(`Are you sure you want to delete "${column.title}"?`);
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${column.title}"?`
+    );
+
     if (!confirmed) return;
 
     try {
       await API.delete(`/columns/${boardId}/${column._id}`);
+
       setColumns((previousColumns) =>
         previousColumns.filter((item) => item._id !== column._id)
       );
@@ -393,10 +499,17 @@ function BoardView() {
         column: defaultColumn._id,
       });
 
-      setTasks((previousTasks) => [
-        ...previousTasks,
-        response.data.task,
-      ]);
+      setTasks((previousTasks) => {
+  const alreadyExists = previousTasks.some(
+    (task) => task._id === response.data.task._id
+  );
+
+  if (alreadyExists) {
+    return previousTasks;
+  }
+
+  return [...previousTasks, response.data.task];
+});
     } catch (err) {
       console.error("Create Task Error:", err);
 
@@ -636,7 +749,6 @@ function BoardView() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-5 sm:p-8">
-
       {/* Header */}
       <div className="mb-8">
         <button
@@ -668,6 +780,7 @@ function BoardView() {
               <Plus size={19} />
               Add Column
             </button>
+
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
@@ -740,11 +853,8 @@ function BoardView() {
         task={selectedTask}
         onUpdate={handleUpdateTask}
       />
-
     </div>
   );
 }
 
 export default BoardView;
-
-
