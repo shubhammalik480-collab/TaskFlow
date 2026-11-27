@@ -10,7 +10,12 @@ const generateToken = (userId) => {
         { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
     );
 };
-
+const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 24 * 60 * 60 * 1000,
+};
 // Register User
 const registerUser = async (req, res) => {
     try {
@@ -57,12 +62,7 @@ const registerUser = async (req, res) => {
         const token = generateToken(user._id.toString());
 
         // 6. Set HTTP-only cookie
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 24 * 60 * 60 * 1000,
-        });
+       res.cookie("token", token, cookieOptions);
 
         // 7. Send response
         return res.status(201).json({
